@@ -282,19 +282,30 @@
 
     - name: Log post-check data to file on host
       ansible.windows.win_shell: |
-        $post = @()
-        $post += "=== POST-PATCH CHECK - $(Get-Date) ==="
-        $post += "Hotfix (after patch):"
-        $post += '{{ hotfix_after.stdout | replace("'", "''") }}'
-        $post += ""
-        $post += "Service state after:"
-        $post += '{{ service_state_after.results | to_nice_json | replace("'", "''") }}'
-        $post += ""
-        if ("{{ app_ports_to_check | length }}" -gt 0) {
-          $post += "Port checks after:"
-          $post += '{{ ports_after.stdout | replace("'", "''") }}'
-        }
-        $post -join "`r`n" | Out-File -FilePath "{{ postcheck_log_path }}" -Encoding UTF8
+          $post = @()
+          $post += "=== POST-PATCH CHECK - $(Get-Date) ==="
+  
+          $post += ""
+          $post += "Hotfix (after patch):"
+          $post += @'
+          {{ hotfix_after.stdout }}
+          '@
+          
+                  $post += ""
+                  $post += "Service state after:"
+                  $post += @'
+          {{ service_state_after.results | to_nice_json }}
+          '@
+          
+          {% if app_ports_to_check | length > 0 %}
+                  $post += ""
+                  $post += "Port checks after:"
+                  $post += @'
+          {{ ports_after.stdout }}
+          '@
+          {% endif %}
+  
+          $post -join "`r`n" | Out-File -FilePath "{{ postcheck_log_path }}" -Encoding UTF8
       tags: [postcheck]
 
     - name: Final summary
