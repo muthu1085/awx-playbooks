@@ -1,0 +1,20 @@
+---
+- name: Get ASG Instance Refresh Status
+  hosts: localhost
+  connection: local
+  gather_facts: no
+
+  vars:
+    asg_name: "ASG-GoldenImage-Patch-Win2025-AppAutoScalingGroup-FbRsNfh9q4IK"
+    aws_region: "ap-south-1"
+
+  tasks:
+    - name: Gather ASG Instance Refresh info
+      amazon.aws.autoscaling_instance_refresh_info:
+        name: "{{ asg_name }}"
+        region: "{{ aws_region }}"
+      register: refresh_info
+
+    - name: Show instance refresh status
+      debug:
+        msg: "{{ refresh_info.instance_refreshes }}"
