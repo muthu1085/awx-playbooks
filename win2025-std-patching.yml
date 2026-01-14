@@ -1,6 +1,6 @@
 ---
 - name: Windows Server 2025 - Patch and Validate
-  hosts: windows_2025
+  hosts: 10.11.35.200
   gather_facts: no
   serial: 1               # Patch one host at a time (change if needed)
   vars:
