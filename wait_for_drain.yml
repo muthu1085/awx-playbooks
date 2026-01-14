@@ -1,0 +1,62 @@
+---
+- name: Wait for drain completion in ELB target groups
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  collections:
+    - amazon.aws
+
+  vars:
+    aws_region: "{{ aws_region }}"
+    instance_id: "{{ instance_id }}"
+    target_group_arns: "{{ target_group_arns }}"
+    drain_timeout_seconds: 600
+    drain_poll_interval: 15
+
+  tasks:
+    - name: Get instance private IP
+      ec2_instance_info:
+        region: "{{ aws_region }}"
+        instance_ids:
+          - "{{ instance_id }}"
+      register: ec2_info
+
+    - name: Set instance private IP fact
+      set_fact:
+        instance_private_ip: "{{ ec2_info.instances[0].private_ip_address }}"
+
+    - name: Wait until instance is drained from all target groups
+      vars:
+        end_time: "{{ (ansible_date_time.epoch | int) + drain_timeout_seconds }}"
+      until: drained | bool
+      retries: "{{ (drain_timeout_seconds // drain_poll_interval) | int }}"
+      delay: "{{ drain_poll_interval }}"
+      block:
+        - name: Get target health for all TGs
+          elb_target_group_info:
+            region: "{{ aws_region }}"
+            target_group_arns: "{{ target_group_arns }}"
+          register: tg_info
+
+        - name: Evaluate drain status
+          set_fact:
+            drained: >-
+              {{
+                (
+                  tg_info.target_groups
+                  | map(attribute='target_health_descriptions')
+                  | list
+                  | flatten
+                  | selectattr('target.id', 'equalto', instance_private_ip)
+                  | selectattr('target_health.state', 'in', ['draining', 'initial', 'healthy'])
+                  | list
+                  | length
+                ) == 0
+              }}
+
+      register: wait_result
+
+    - name: Show drain completion result
+      debug:
+        msg: "Instance {{ instance_id }} drained from all TGs: {{ wait_result }}"
