@@ -245,7 +245,7 @@
 
     - name: Check ports (post-patch)
       ansible.windows.win_shell: |
-        $ports = {{ app_ports_to_check | to_json }}
+        $ports = '{{ app_ports_to_check | to_json }}'
         $results = foreach ($p in $ports) {
           $r = Test-NetConnection -ComputerName 'localhost' -Port $p -WarningAction SilentlyContinue
           [PSCustomObject]@{
