@@ -38,10 +38,10 @@
 
   pre_tasks:
     - name: Ensure temp directory exists
-    ansible.windows.win_file:
+      ansible.windows.win_file:
       path: C:\Temp
       state: directory
-    tags: [precheck]
+      tags: [precheck]
 
     - name: Collect OS and build info
       ansible.windows.win_shell: |
