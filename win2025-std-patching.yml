@@ -1,48 +1,27 @@
----
 - name: Windows Server 2025 - Patch and Validate
   hosts: windows_2025
-  gather_facts: no
-  serial: 1               # Patch one host at a time (change if needed)
+  gather_facts: 'no'
+  serial: 1
   vars:
-    # === Control variables ===
     patch_category_names:
       - SecurityUpdates
       - CriticalUpdates
-      # - UpdateRollups
-      # - DefinitionUpdates
-    max_run_minutes: 120           # Safety timeout per host
-
-    # If you want to target specific KBs, add them here (optional)
-    kb_ids_to_ensure: []           # e.g. ['KB5035853','KB5035854']
-
-    # If true, patch via category_names; if false and kb_ids_to_ensure is not empty,
-    # patch only those KBs
+    max_run_minutes: 120
+    kb_ids_to_ensure: []
     use_category_based_updates: true
-
-    # Services that must be running before & after patching
     app_services_to_check:
-      - w3svc           # IIS example
-      # - MSSQLSERVER   # SQL Server example
-      # - SomeCustomService
-
-    # Optional TCP ports (application health) to check before & after
-    # They should respond on localhost
+      - w3svc
     app_ports_to_check:
       - 80
-      # - 443
-      # - 1433
-
-    # Remote path for log file on target
     precheck_log_path: 'C:\Temp\patch_precheck.log'
     postcheck_log_path: 'C:\Temp\patch_postcheck.log'
-
   pre_tasks:
     - name: Ensure temp directory exists
-      ansible.windows.win_file:
-      path: C:\Temp
+      ansible.windows.win_file: null
+      path: 'C:\Temp'
       state: directory
-      tags: [precheck]
-
+      tags:
+        - precheck
     - name: Collect OS and build info
       ansible.windows.win_shell: |
         $os = Get-CimInstance Win32_OperatingSystem
@@ -58,17 +37,17 @@
         } | ConvertTo-Json -Depth 4
       register: os_info
       changed_when: false
-      tags: [precheck]
-
+      tags:
+        - precheck
     - name: Check pending reboot state
       ansible.windows.win_reboot:
-        test_command: 'powershell -Command "Write-Output OK"'
+        test_command: powershell -Command "Write-Output OK"
         reboot_timeout: 600
         pre_reboot_delay: 0
         post_reboot_delay: 60
-      when: false  # we will not reboot here, just use our own check
-      tags: [never]
-
+      when: false
+      tags:
+        - never
     - name: Check pending reboot via registry
       ansible.windows.win_shell: |
         $rebootRequired = $false
@@ -83,8 +62,8 @@
         [PSCustomObject]@{ PendingReboot = $rebootRequired } | ConvertTo-Json
       register: pending_reboot_check
       changed_when: false
-      tags: [precheck]
-
+      tags:
+        - precheck
     - name: Check free space on system drive
       ansible.windows.win_shell: |
         $drive = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'"
@@ -96,8 +75,8 @@
         } | ConvertTo-Json
       register: disk_info
       changed_when: false
-      tags: [precheck]
-
+      tags:
+        - precheck
     - name: Capture current installed hotfixes summary
       ansible.windows.win_shell: |
         Get-HotFix |
@@ -106,16 +85,16 @@
         ConvertTo-Json -Depth 4
       register: hotfix_before
       changed_when: false
-      tags: [precheck]
-
+      tags:
+        - precheck
     - name: Check important application services state (pre-patch)
       ansible.windows.win_service:
-        name: "{{ item }}"
-      loop: "{{ app_services_to_check }}"
+        name: '{{ item }}'
+      loop: '{{ app_services_to_check }}'
       register: service_state_before
       changed_when: false
-      tags: [precheck]
-
+      tags:
+        - precheck
     - name: Check application ports (pre-patch)
       ansible.windows.win_shell: |
         $ports = {{ app_ports_to_check | to_json }}
@@ -131,100 +110,127 @@
       when: app_ports_to_check|length > 0
       register: ports_before
       changed_when: false
-      tags: [precheck]
-
+      tags:
+        - precheck
     - name: Log pre-check data to file on host
-      ansible.windows.win_shell: |
+      ansible.windows.win_shell: >
         $pre = @()
+
         $pre += "=== PRE-PATCH CHECK - $(Get-Date) ==="
+
         $pre += "OS Info:"
+
         $pre += '{{ os_info.stdout | replace("'", "''") }}'
+
         $pre += ""
+
         $pre += "Pending Reboot:"
+
         $pre += '{{ pending_reboot_check.stdout | replace("'", "''") }}'
+
         $pre += ""
+
         $pre += "Disk Info:"
+
         $pre += '{{ disk_info.stdout | replace("'", "''") }}'
+
         $pre += ""
+
         $pre += "Hotfix (summary):"
+
         $pre += '{{ hotfix_before.stdout | replace("'", "''") }}'
+
         $pre += ""
+
         $pre += "Service state:"
-        $pre += '{{ service_state_before.results | to_nice_json | replace("'", "''") }}'
+
+        $pre += '{{ service_state_before.results | to_nice_json | replace("'",
+        "''") }}'
+
         $pre += ""
+
         if ("{{ app_ports_to_check | length }}" -gt 0) {
           $pre += "Port checks:"
           $pre += '{{ ports_before.stdout | replace("'", "''") }}'
         }
-        $pre -join "`r`n" | Out-File -FilePath "{{ precheck_log_path }}" -Encoding UTF8
-      tags: [precheck]
 
+        $pre -join "`r`n" | Out-File -FilePath "{{ precheck_log_path }}"
+        -Encoding UTF8
+      tags:
+        - precheck
   tasks:
     - name: Search available updates (pre-patch visibility)
       ansible.windows.win_updates:
-        category_names: "{{ patch_category_names }}"
+        category_names: '{{ patch_category_names }}'
         state: searched
       register: updates_available
       changed_when: false
-      tags: [precheck,patch]
-
+      tags:
+        - precheck
+        - patch
     - name: Show number of updates found (debug)
       ansible.builtin.debug:
-        msg: "Host {{ inventory_hostname }} has {{ updates_available.found_update_count | default(0) }} updates available."
-      tags: [precheck,patch]
-
+        msg: >-
+          Host {{ inventory_hostname }} has {{
+          updates_available.found_update_count | default(0) }} updates
+          available.
+      tags:
+        - precheck
+        - patch
     - name: Install updates by category
       ansible.windows.win_updates:
-        category_names: "{{ patch_category_names }}"
+        category_names: '{{ patch_category_names }}'
         state: installed
-        reboot: no
+        reboot: 'no'
       when: use_category_based_updates | bool
       register: win_update_result
-      tags: [patch]
-
+      tags:
+        - patch
     - name: Install specific KBs only
       ansible.windows.win_updates:
         state: installed
-        reboot: no
-        whitelist: "{{ kb_ids_to_ensure }}"
+        reboot: 'no'
+        whitelist: '{{ kb_ids_to_ensure }}'
       when:
         - not use_category_based_updates | bool
         - kb_ids_to_ensure | length > 0
       register: win_update_result
-      tags: [patch]
-
+      tags:
+        - patch
     - name: Fail if no update method selected
       ansible.builtin.fail:
-        msg: "No updates installed: either enable use_category_based_updates or provide kb_ids_to_ensure."
+        msg: >-
+          No updates installed: either enable use_category_based_updates or
+          provide kb_ids_to_ensure.
       when:
         - not use_category_based_updates | bool
         - kb_ids_to_ensure | length == 0
         - win_update_result is not defined
-      tags: [patch]
-
+      tags:
+        - patch
     - name: Show win_updates result (debug)
       ansible.builtin.debug:
         var: win_update_result
-      tags: [patch]
-
+      tags:
+        - patch
     - name: Reboot if required by updates
       ansible.windows.win_reboot:
-        reboot_timeout: "{{ max_run_minutes * 60 }}"
+        reboot_timeout: '{{ max_run_minutes * 60 }}'
         pre_reboot_delay: 30
         post_reboot_delay: 120
-        test_command: 'powershell -Command "Write-Output AWX-REBOOT-OK"'
+        test_command: powershell -Command "Write-Output AWX-REBOOT-OK"
       when: win_update_result.reboot_required | default(false)
-      tags: [patch]
-
+      tags:
+        - patch
   post_tasks:
     - name: Wait for WinRM to become available after reboot
-      ansible.windows.win_ping:
+      ansible.windows.win_ping: null
       register: ping_after
       retries: 30
       delay: 20
       until: ping_after is succeeded
-      tags: [postcheck]
-
+      tags:
+        - postcheck
     - name: Capture hotfix list after patch
       ansible.windows.win_shell: |
         Get-HotFix |
@@ -233,16 +239,16 @@
         ConvertTo-Json -Depth 4
       register: hotfix_after
       changed_when: false
-      tags: [postcheck]
-
+      tags:
+        - postcheck
     - name: Check important services (post-patch)
       ansible.windows.win_service:
-        name: "{{ item }}"
-      loop: "{{ app_services_to_check }}"
+        name: '{{ item }}'
+      loop: '{{ app_services_to_check }}'
       register: service_state_after
       changed_when: false
-      tags: [postcheck]
-
+      tags:
+        - postcheck
     - name: Check ports (post-patch)
       ansible.windows.win_shell: |
         $ports = {{ app_ports_to_check | to_json }}
@@ -258,50 +264,66 @@
       when: app_ports_to_check|length > 0
       register: ports_after
       changed_when: false
-      tags: [postcheck]
-
+      tags:
+        - postcheck
     - name: Validate critical services are running
       ansible.builtin.assert:
         that:
           - item.state == "running"
-        fail_msg: "Service {{ item.name }} is NOT running after patching on {{ inventory_hostname }}."
-        success_msg: "Service {{ item.name }} is running after patching."
-      loop: "{{ service_state_after.results | default([]) }}"
+        fail_msg: >-
+          Service {{ item.name }} is NOT running after patching on {{
+          inventory_hostname }}.
+        success_msg: 'Service {{ item.name }} is running after patching.'
+      loop: '{{ service_state_after.results | default([]) }}'
       when: app_services_to_check | length > 0
-      tags: [postcheck]
-
+      tags:
+        - postcheck
     - name: Validate required KBs installed (if configured)
       ansible.builtin.assert:
-        that: >
+        that: |
           hotfix_after.stdout is search(item)
-        fail_msg: "KB {{ item }} not found after patching on {{ inventory_hostname }}."
-        success_msg: "KB {{ item }} found after patching on {{ inventory_hostname }}."
-      loop: "{{ kb_ids_to_ensure }}"
+        fail_msg: 'KB {{ item }} not found after patching on {{ inventory_hostname }}.'
+        success_msg: 'KB {{ item }} found after patching on {{ inventory_hostname }}.'
+      loop: '{{ kb_ids_to_ensure }}'
       when: kb_ids_to_ensure | length > 0
-      tags: [postcheck]
-
+      tags:
+        - postcheck
     - name: Log post-check data to file on host
-      ansible.windows.win_shell: |
+      ansible.windows.win_shell: >
         $post = @()
+
         $post += "=== POST-PATCH CHECK - $(Get-Date) ==="
+
         $post += "Hotfix (after patch):"
+
         $post += '{{ hotfix_after.stdout | replace("'", "''") }}'
+
         $post += ""
+
         $post += "Service state after:"
-        $post += '{{ service_state_after.results | to_nice_json | replace("'", "''") }}'
+
+        $post += '{{ service_state_after.results | to_nice_json | replace("'",
+        "''") }}'
+
         $post += ""
+
         if ("{{ app_ports_to_check | length }}" -gt 0) {
           $post += "Port checks after:"
           $post += '{{ ports_after.stdout | replace("'", "''") }}'
         }
-        $post -join "`r`n" | Out-File -FilePath "{{ postcheck_log_path }}" -Encoding UTF8
-      tags: [postcheck]
 
+        $post -join "`r`n" | Out-File -FilePath "{{ postcheck_log_path }}"
+        -Encoding UTF8
+      tags:
+        - postcheck
     - name: Final summary
       ansible.builtin.debug:
         msg:
-          - "Patching completed on {{ inventory_hostname }}."
-          - "Pre-check log:  {{ precheck_log_path }}"
-          - "Post-check log: {{ postcheck_log_path }}"
-          - "Reboot Required? {{ win_update_result.reboot_required | default(false) }}"
-      tags: [postcheck]
+          - 'Patching completed on {{ inventory_hostname }}.'
+          - 'Pre-check log:  {{ precheck_log_path }}'
+          - 'Post-check log: {{ postcheck_log_path }}'
+          - >-
+            Reboot Required? {{ win_update_result.reboot_required |
+            default(false) }}
+      tags:
+        - postcheck
