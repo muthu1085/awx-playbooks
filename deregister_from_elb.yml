@@ -8,9 +8,9 @@
     - amazon.aws
 
   vars:
-    aws_region: "{{ aws_region }}"
-    instance_id: "{{ instance_id }}"
-    target_group_arns: "{{ target_group_arns }}"
+    aws_region: "ap-south-1"
+    instance_id: "i-0771e60035a4020d8"
+    target_group_arns: "arn:aws:elasticloadbalancing:ap-south-1:349024249383:targetgroup/dev-win-asg-tg/6d0b0861e1b9d3dd"
 
   tasks:
     - name: Get instance private IP
