@@ -1,0 +1,27 @@
+---
+- name: Put ASG instance into Standby
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  collections:
+    - amazon.aws
+
+  vars:
+    aws_region: "{{ aws_region }}"
+    asg_name: "{{ asg_name }}"
+    instance_id: "{{ instance_id }}"
+    decrement_desired_capacity: false  # typically keep capacity unchanged
+
+  tasks:
+    - name: Move instance to Standby
+      autoscaling_instance:
+        region: "{{ aws_region }}"
+        instance_ids:
+          - "{{ instance_id }}"
+        state: standby
+        decrement_desired_capacity: "{{ decrement_desired_capacity }}"
+        autoscaling_group_name: "{{ asg_name }}"
+
+    - debug:
+        msg: "Instance {{ instance_id }} moved to Standby in ASG {{ asg_name }}"
