@@ -6,6 +6,7 @@
 
   collections:
     - amazon.aws
+    - community.aws
 
   vars:
     aws_region: "ap-south-1"
