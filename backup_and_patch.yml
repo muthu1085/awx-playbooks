@@ -1,0 +1,61 @@
+---
+- name: Backup and patch instance
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  collections:
+    - amazon.aws
+
+  vars:
+    aws_region: "{{ aws_region }}"
+    instance_id: "{{ instance_id }}"
+    backup_ami_name: "prepatch-{{ instance_id }}-{{ lookup('pipe','date +%Y%m%d%H%M%S') }}"
+    backup_tags:
+      Name: "prepatch-{{ instance_id }}"
+      PatchRunId: "{{ patch_run_id | default('manual') }}"
+      Purpose: "pre-patch-backup"
+    ssm_patch_document: "AWS-RunPatchBaseline"
+    ssm_patch_parameters:
+      Operation:
+        - Install
+      RebootOption:
+        - RebootIfNeeded
+    ssm_timeout_seconds: 7200
+
+  tasks:
+    - name: Create pre-patch AMI (includes snapshots)
+      ec2_ami:
+        region: "{{ aws_region }}"
+        instance_id: "{{ instance_id }}"
+        name: "{{ backup_ami_name }}"
+        wait: true
+        wait_timeout: 1800
+        tags: "{{ backup_tags }}"
+        state: present
+      register: backup_ami
+
+    - name: Save backup AMI info as fact
+      set_fact:
+        prepatch_ami_id: "{{ backup_ami.image_id }}"
+
+    - debug:
+        msg: "Created pre-patch AMI {{ prepatch_ami_id }} for instance {{ instance_id }}"
+
+    - name: Trigger SSM patch baseline on instance
+      aws_ssm:
+        region: "{{ aws_region }}"
+        targets:
+          - Key: InstanceIds
+            Values:
+              - "{{ instance_id }}"
+        document_name: "{{ ssm_patch_document }}"
+        timeout_seconds: "{{ ssm_timeout_seconds }}"
+        max_concurrency: "1"
+        max_errors: "1"
+        parameters: "{{ ssm_patch_parameters }}"
+        wait_for_completion: true
+      register: ssm_patch_result
+
+    - debug:
+        var: ssm_patch_result
