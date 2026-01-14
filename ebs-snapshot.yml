@@ -10,6 +10,8 @@
       BackupType: "OnDemand"
       Component: "EC2-Snapshot"
       Environment: "Prod"   # override via extra vars if needed
+      ec2_instance_id: "i-057611381e92b6a09"
+      ec2_instance_id: "
 
   tasks:
     - name: Lookup EC2 instance info
@@ -26,10 +28,7 @@
 
     - name: Extract attached EBS volume IDs
       ansible.builtin.set_fact:
-        volume_ids: >-
-          {{ ec2_info.instances[0].block_device_mappings
-             | map(attribute='ebs.volume_id')
-             | list }}
+        volume_ids: vol-0e394e3876df5c948
 
     - name: Create snapshots for each volume
       amazon.aws.ec2_snapshot:
