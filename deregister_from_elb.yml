@@ -1,0 +1,40 @@
+---
+- name: Deregister instance from ELB target groups
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  collections:
+    - amazon.aws
+
+  vars:
+    aws_region: "{{ aws_region }}"
+    instance_id: "{{ instance_id }}"
+    target_group_arns: "{{ target_group_arns }}"
+
+  tasks:
+    - name: Get instance private IP
+      ec2_instance_info:
+        region: "{{ aws_region }}"
+        instance_ids:
+          - "{{ instance_id }}"
+      register: ec2_info
+
+    - name: Set instance private IP fact
+      set_fact:
+        instance_private_ip: "{{ ec2_info.instances[0].private_ip_address }}"
+
+    - name: Deregister instance from target groups
+      elb_target:
+        region: "{{ aws_region }}"
+        target_group_arn: "{{ item }}"
+        targets:
+          - id: "{{ instance_private_ip }}"
+        state: absent
+      loop: "{{ target_group_arns }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Debug
+      debug:
+        msg: "Instance {{ instance_id }} deregistered from TGs with IP {{ instance_private_ip }}"
