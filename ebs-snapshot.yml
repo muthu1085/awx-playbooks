@@ -39,7 +39,6 @@
         tags: "{{ snapshot_common_tags }}"
         wait: true
         wait_timeout: 3600
-      loop: "{{ volume_ids }}"
       register: snapshot_results
 
     - name: Show snapshot results
