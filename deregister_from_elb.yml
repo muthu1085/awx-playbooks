@@ -31,9 +31,6 @@
         targets:
           - id: "{{ instance_private_ip }}"
         state: absent
-      loop: "{{ target_group_arns }}"
-      loop_control:
-        label: "{{ item }}"
 
     - name: Debug
       debug:
