@@ -260,21 +260,22 @@
       changed_when: false
       tags: [postcheck]
 
-    - name: Validate critical services are running
+    - name: Validate critical services exist and are running
       ansible.builtin.assert:
         that:
-          - item.state is defined
-          - item.state == "running"
+          - item.exists | default(false)
+          - (item.state | default('stopped')) == "running"
         fail_msg: >-
-          Service {{ item.item | default('UNKNOWN_SERVICE') }} is NOT running
-          after patching on {{ inventory_hostname }}.
-          Actual state: {{ item.state | default('undefined') }}
+          Service {{ item.item | default('UNKNOWN_SERVICE') }} either does not exist
+          (exists={{ item.exists | default('unknown') }}) or is not running
+          (state={{ item.state | default('undefined') }}) after patching on {{ inventory_hostname }}.
         success_msg: >-
-          Service {{ item.item | default('UNKNOWN_SERVICE') }} is running after
-          patching on {{ inventory_hostname }}.
+          Service {{ item.item | default('UNKNOWN_SERVICE') }} exists and is running
+          after patching on {{ inventory_hostname }}.
       loop: "{{ service_state_after.results | default([]) }}"
       when: app_services_to_check | length > 0
       tags: [postcheck]
+
 
 
     - name: Validate required KBs installed (if configured)
