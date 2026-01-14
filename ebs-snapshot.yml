@@ -32,11 +32,11 @@
     - name: Create snapshots for each volume
       amazon.aws.ec2_snapshot:
         region: "{{ aws_region | default('ap-south-1') }}"
-        volume_id: "{{ item }}"
+        volume_id: "vol-0e394e3876df5c948"
    #     description: >-
    #       Snapshot of {{ ec2_instance_id }} / {{ item }}
     #      created by AWX on {{ ansible_date_time.iso8601 }}
-        tags: "{{ snapshot_common_tags }}"
+    #    tags: "{{ snapshot_common_tags }}"
         wait: true
         wait_timeout: 3600
       register: snapshot_results
