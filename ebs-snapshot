@@ -1,0 +1,55 @@
+---
+- name: Create EBS snapshots for an EC2 instance (triggered from AWX)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    ec2_instance_id: "{{ ec2_instance_id | default('i-057611381e92b6a09') }}"
+    aws_region: "{{ aws_region | default('ap-south-1') }}"
+    snapshot_common_tags:
+      CreatedBy: "AWX"
+      BackupType: "OnDemand"
+      Component: "EC2-Snapshot"
+      Environment: "Prod"   # override via extra vars if needed
+
+  tasks:
+    - name: Lookup EC2 instance info
+      amazon.aws.ec2_instance_info:
+        region: "{{ aws_region }}"
+        instance_ids:
+          - "{{ ec2_instance_id }}"
+      register: ec2_info
+
+    - name: Fail early if instance not found
+      ansible.builtin.fail:
+        msg: "No information returned for instance {{ ec2_instance_id }} in region {{ aws_region }}"
+      when: ec2_info.instances | length == 0
+
+    - name: Extract attached EBS volume IDs
+      ansible.builtin.set_fact:
+        volume_ids: >-
+          {{ ec2_info.instances[0].block_device_mappings
+             | map(attribute='ebs.volume_id')
+             | list }}
+
+    - name: Debug list of volumes (optional)
+      ansible.builtin.debug:
+        msg: "Volumes to snapshot: {{ volume_ids }}"
+
+    - name: Create snapshots for each volume
+      amazon.aws.ec2_snapshot:
+        region: "{{ aws_region }}"
+        volume_id: "{{ item }}"
+        description: >-
+          Snapshot of {{ ec2_instance_id }} / {{ item }}
+          created by AWX on {{ ansible_date_time.iso8601 }}
+        tags: "{{ snapshot_common_tags }}"
+        wait: true
+        wait_timeout: 3600
+      loop: "{{ volume_ids }}"
+      register: snapshot_results
+
+    - name: Show snapshot results
+      ansible.builtin.debug:
+        var: snapshot_results
