@@ -263,9 +263,12 @@
     - name: Validate critical services are running
       ansible.builtin.assert:
         that:
-          - item.state == "running"
-        fail_msg: "Service {{ item.name }} is NOT running after patching on {{ inventory_hostname }}."
-        success_msg: "Service {{ item.name }} is running after patching."
+          - (item.state | default(item.status)) == "running"
+        fail_msg: >-
+          Service {{ item.item }} is NOT running after patching on {{ inventory_hostname }}.
+          Actual state: {{ item.state | default(item.status) | default('unknown') }}
+        success_msg: >-
+          Service {{ item.item }} is running after patching on {{ inventory_hostname }}.
       loop: "{{ service_state_after.results | default([]) }}"
       when: app_services_to_check | length > 0
       tags: [postcheck]
