@@ -1,0 +1,62 @@
+---
+- name: Post-patch health check and rollback decision
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  collections:
+    - amazon.aws
+
+  vars:
+    aws_region: "{{ aws_region }}"
+    asg_name: "{{ asg_name }}"
+    instance_id: "{{ instance_id }}"
+    health_check_url: "{{ health_check_url }}"
+    health_check_retries: 10
+    health_check_delay: 30
+    rollback_on_failure: true
+    prepatch_ami_id: "{{ prepatch_ami_id | default(omit) }}"
+
+  tasks:
+    - name: Wait for app health check to pass
+      uri:
+        url: "{{ health_check_url }}"
+        method: GET
+        return_content: false
+        status_code: 200
+        validate_certs: false
+      register: health_result
+      until: health_result.status == 200
+      retries: "{{ health_check_retries }}"
+      delay: "{{ health_check_delay }}"
+      failed_when: false
+
+    - name: Decide if health check succeeded
+      set_fact:
+        health_ok: "{{ health_result.status | default(0) | int == 200 }}"
+
+    - name: Debug health result
+      debug:
+        msg: "Post-patch health_ok={{ health_ok }}, status={{ health_result.status | default('N/A') }}"
+
+    - name: Handle rollback if health failed
+      when: not health_ok and rollback_on_failure
+      block:
+        - name: Log rollback decision
+          debug:
+            msg: "Health check failed, initiating rollback for instance {{ instance_id }}"
+
+        # Option 1 (simple): terminate instance and let ASG replace it with last known good launch template
+        - name: Terminate failed instance to trigger ASG replacement
+          ec2:
+            region: "{{ aws_region }}"
+            instance_ids:
+              - "{{ instance_id }}"
+            state: absent
+            wait: true
+
+        # Option 2 (advanced): you can implement launching from prepatch_ami_id here if desired
+
+    - name: Mark health result
+      set_fact:
+        postpatch_health_status: "{{ 'OK' if health_ok else 'FAILED' }}"
