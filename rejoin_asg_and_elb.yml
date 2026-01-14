@@ -1,0 +1,86 @@
+---
+- name: Rejoin ASG and ELB after successful patch
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  collections:
+    - amazon.aws
+
+  vars:
+    aws_region: "{{ aws_region }}"
+    asg_name: "{{ asg_name }}"
+    instance_id: "{{ instance_id }}"
+    target_group_arns: "{{ target_group_arns }}"
+    postpatch_health_status: "{{ postpatch_health_status | default('FAILED') }}"
+    elb_healthy_state: "healthy"
+    elb_wait_retries: 20
+    elb_wait_delay: 15
+
+  tasks:
+    - name: Abort rejoin if health failed
+      when: postpatch_health_status != 'OK'
+      fail:
+        msg: "Post-patch health is not OK ({{ postpatch_health_status }}), skipping rejoin."
+
+    - name: Return instance from Standby to InService
+      autoscaling_instance:
+        region: "{{ aws_region }}"
+        instance_ids:
+          - "{{ instance_id }}"
+        state: InService
+        autoscaling_group_name: "{{ asg_name }}"
+
+    - name: Get instance private IP
+      ec2_instance_info:
+        region: "{{ aws_region }}"
+        instance_ids:
+          - "{{ instance_id }}"
+      register: ec2_info
+
+    - name: Set instance private IP fact
+      set_fact:
+        instance_private_ip: "{{ ec2_info.instances[0].private_ip_address }}"
+
+    - name: Register instance in target groups
+      elb_target:
+        region: "{{ aws_region }}"
+        target_group_arn: "{{ item }}"
+        targets:
+          - id: "{{ instance_private_ip }}"
+        state: present
+      loop: "{{ target_group_arns }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Wait until instance is healthy in all target groups
+      vars:
+        retries: "{{ elb_wait_retries }}"
+      until: instance_healthy_in_all_groups | bool
+      retries: "{{ elb_wait_retries }}"
+      delay: "{{ elb_wait_delay }}"
+      block:
+        - name: Get target health for TGs
+          elb_target_group_info:
+            region: "{{ aws_region }}"
+            target_group_arns: "{{ target_group_arns }}"
+          register: tg_info
+
+        - name: Evaluate health across TGs
+          set_fact:
+            instance_healthy_in_all_groups: >-
+              {{
+                (
+                  tg_info.target_groups
+                  | map(attribute='target_health_descriptions')
+                  | list
+                  | flatten
+                  | selectattr('target.id', 'equalto', instance_private_ip)
+                  | selectattr('target_health.state', 'equalto', elb_healthy_state)
+                  | list
+                  | length
+                ) == (target_group_arns | length)
+              }}
+
+    - debug:
+        msg: "Instance {{ instance_id }} is back InService and healthy on all target groups."
